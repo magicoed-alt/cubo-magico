@@ -1,0 +1,8 @@
+ok
+[]
+tick [{"type":"cue"},{"type":"speak","text":"cima frente"}]
+cima -> [{"type":"speak","text":"direita frente"}]
+direita -> [{"type":"speak","text":"direita reverso, esquerda duplo"}]
+Guiando 11 [ 'DIREITA ↺', 'ESQUERDA 2×', 'CIMA 2×' ]
+[{"type":"speak","text":"direita reverso, esquerda duplo"}]
+7 padrões

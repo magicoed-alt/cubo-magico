@@ -1,0 +1,20 @@
+commit 0f046cb
+--- erros ---
+sem erros de compilação
+--- avisos swift ---
+--- final ---
+
+RegisterExecutionPolicyException /Users/runner/work/cubo-magico/cubo-magico/build/Release-iphoneos/CuboMagico.app (in target 'CuboMagico' from project 'CuboMagico')
+    cd /Users/runner/work/cubo-magico/cubo-magico
+    builtin-RegisterExecutionPolicyException /Users/runner/work/cubo-magico/cubo-magico/build/Release-iphoneos/CuboMagico.app
+
+Validate /Users/runner/work/cubo-magico/cubo-magico/build/Release-iphoneos/CuboMagico.app (in target 'CuboMagico' from project 'CuboMagico')
+    cd /Users/runner/work/cubo-magico/cubo-magico
+    builtin-validationUtility /Users/runner/work/cubo-magico/cubo-magico/build/Release-iphoneos/CuboMagico.app -validate-for-store -infoplist-subpath Info.plist
+
+Touch /Users/runner/work/cubo-magico/cubo-magico/build/Release-iphoneos/CuboMagico.app (in target 'CuboMagico' from project 'CuboMagico')
+    cd /Users/runner/work/cubo-magico/cubo-magico
+    /usr/bin/touch -c /Users/runner/work/cubo-magico/cubo-magico/build/Release-iphoneos/CuboMagico.app
+
+** BUILD SUCCEEDED **
+
