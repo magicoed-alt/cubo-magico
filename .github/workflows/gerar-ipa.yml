@@ -1,0 +1,59 @@
+name: Gerar IPA
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Testar o motor (solver e rotinas)
+        run: |
+          cd testes && node t_cube.js && node t_engine.js && node t_jsc.js | tee ../testes.log
+      - name: Compilar (sem assinatura)
+        run: |
+          xcodebuild -project CuboMagico.xcodeproj -target CuboMagico \
+            -configuration Release -sdk iphoneos \
+            SYMROOT="$PWD/build" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build 2>&1 | tee build.log | grep -E "error:|warning: .*swift|BUILD" || true
+          test -d build/Release-iphoneos/CuboMagico.app
+      - name: Montar o .ipa
+        run: |
+          mkdir Payload
+          cp -R build/Release-iphoneos/CuboMagico.app Payload/
+          zip -qry CuboMagico.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CuboMagico-ipa
+          path: CuboMagico.ipa
+      - name: Publicar o .ipa (Release "ultima-versao" e branch "ipa")
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete ultima-versao --yes --cleanup-tag || true
+          gh release create ultima-versao CuboMagico.ipa \
+            --title "Cubo Mágico – última versão" \
+            --notes "Toque em CuboMagico.ipa para baixar e abrir no app de instalação."
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git checkout --orphan ipa
+          git rm -rf --cached . > /dev/null
+          git add -f CuboMagico.ipa
+          git commit -m "IPA ${GITHUB_SHA::7}"
+          git push -f origin ipa
+      - name: Enviar o log para a branch "log" (para o Claude ler)
+        if: always()
+        run: |
+          mkdir -p /tmp/log
+          { echo "commit ${GITHUB_SHA::7}"; echo "--- erros ---"; grep -E "error:" build.log || echo "sem erros de compilação"; \
+            echo "--- avisos swift ---"; grep -E "warning:" build.log | grep -i swift | head -40 || true; \
+            echo "--- final ---"; tail -15 build.log || true; } > /tmp/log/resultado.txt 2>&1
+          cp testes.log /tmp/log/ 2>/dev/null || true
+          cd /tmp/log && git init -q && git checkout -q -b log
+          git config user.name "github-actions"; git config user.email "actions@github.com"
+          git add -A && git commit -qm "log ${GITHUB_SHA::7}"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" log

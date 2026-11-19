@@ -1,0 +1,395 @@
+// engine.js — cérebro do app "Cubo Mágico" (roda no JavaScriptCore do iPhone e no node para testes)
+// Depende de: min2phase.js (solver Kociemba de 2 fases, cstimer) e cube.js
+"use strict";
+
+var Engine = (function () {
+	var C = (typeof Cube !== 'undefined') ? Cube : require('./cube.txt');
+	var M2P = (typeof min2phase !== 'undefined') ? min2phase : require('./min2phase.txt');
+
+	// ---------------- configuração ----------------
+	var DEF = {
+		speechMode: 'cores',            // 'cores' | 'posicao' | 'notacao'
+		faceColor: ['branco', 'vermelho', 'verde', 'amarelo', 'laranja', 'azul'], // faces U R F D L B
+		topFace: 0, frontFace: 2,       // como você segura o cubo (modos posição/notação)
+		wordCW: 'horário', wordHalf: 'duas', wordCCW: 'anti',
+		steps: 1,                       // giros anunciados por vez
+		repeatAfter: 3,                 // repetir a fala após X s sem giro (0 = nunca)
+		maxRepeats: 3,
+		waitAfterMix: 5,                // segundos sem giro para considerar a mistura terminada
+		readyCue: 'bip', readyText: 'pronto',  // 'nada' | 'bip' | 'voz'
+		doneCue: 'bip', doneText: 'ok',
+		optimizeMs: 800,                // tempo para procurar a solução mais curta
+		echoMoves: false,               // fora de rotina: falar cada giro (teste de cores)
+		loop: false                     // ao terminar a playlist, recomeçar
+	};
+	var cfg = clone(DEF);
+
+	var POS = ['cima', 'direita', 'frente', 'baixo', 'esquerda', 'trás'];
+	var LETTER = ['U', 'R', 'F', 'D', 'L', 'B'];
+	var LETTER_SPEECH = ['u', 'érre', 'éfe', 'dê', 'éle', 'bê'];
+	var VEC = [[0, 1, 0], [1, 0, 0], [0, 0, 1], [0, -1, 0], [-1, 0, 0], [0, 0, -1]];
+
+	function clone(o) { return JSON.parse(JSON.stringify(o)); }
+	function dot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+	function cross(a, b) { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }
+
+	// face interna (URFDLB do cubo) -> posição física conforme o cubo é segurado
+	function physMap() {
+		var t = cfg.topFace | 0, f = cfg.frontFace | 0;
+		if (t < 0 || t > 5 || f < 0 || f > 5 || dot(VEC[t], VEC[f]) != 0) { t = 0; f = 2; }
+		var up = VEC[t], fr = VEC[f], rt = cross(up, fr);
+		var map = [];
+		for (var i = 0; i < 6; i++) {
+			var v = VEC[i];
+			if (dot(v, up) == 1) map[i] = 0; else if (dot(v, up) == -1) map[i] = 3;
+			else if (dot(v, rt) == 1) map[i] = 1; else if (dot(v, rt) == -1) map[i] = 4;
+			else if (dot(v, fr) == 1) map[i] = 2; else map[i] = 5;
+		}
+		return map;
+	}
+
+	function moveInfo(m) {
+		var face = ~~(m / 3), p = m % 3, ph = physMap()[face];
+		var w = [cfg.wordCW, cfg.wordHalf, cfg.wordCCW][p];
+		var color = cfg.faceColor[face] || C.FACES[face];
+		var notation = LETTER[ph] + ['', '2', "'"][p];
+		var speech;
+		if (cfg.speechMode == 'posicao') speech = POS[ph] + ' ' + w;
+		else if (cfg.speechMode == 'notacao') speech = LETTER_SPEECH[ph] + ['', ' dois', ' linha'][p];
+		else speech = color + ' ' + w;
+		return { m: m, face: face, power: p, speech: speech, notation: notation, color: color,
+			label: color.toUpperCase() + ' ' + ['↻', '2×', '↺'][p] };
+	}
+
+	// ---------------- solver ----------------
+	var search = null, msPerProbe = 0.15, solverReady = false;
+	function initSolver() {
+		if (solverReady) return;
+		M2P.initFull();
+		search = new M2P.Search();
+		solverReady = true;
+	}
+	function lenOf(s) { var t = s.trim(); return t ? t.split(/\s+/).length : 0; }
+	function now() { return Date.now(); }
+
+	// sequência de movimentos que leva o estado 'from' até 'to'
+	function plan(from, to, budgetMs) {
+		initSolver();
+		var x = C.mult(C.inv(to), from);
+		if (C.isSolved(x)) return [];
+		var fac = C.toFacelet(x);
+		var best = search.solution(fac, 21, 1e9, 0, 0);
+		if (best.indexOf('Error') == 0) return null;
+		var len = lenOf(best), t0 = now(), probe = 300;
+		while (len > 1) {
+			var left = budgetMs - (now() - t0);
+			if (left <= 5) break;
+			var pm = Math.min(probe, Math.max(50, Math.floor(left / msPerProbe)));
+			var t1 = now();
+			var r = search.solution(fac, len - 1, pm, 0, 0);
+			var dt = now() - t1;
+			if (search.probe > 20 && dt > 0) msPerProbe = msPerProbe * 0.5 + (dt / search.probe) * 0.5;
+			if (r.indexOf('Error') == 0) {
+				if (pm < probe) break;        // não deu tempo de procurar mais
+				probe *= 3;
+				if (probe > 3e6) break;
+			} else { best = r; len = lenOf(r); }
+		}
+		return C.parseAlg(best);
+	}
+
+	// ---------------- cubos ----------------
+	function newCube() {
+		return { connected: false, raw: null, calibInv: new C.CC(), state: null, lastMoveAt: 0, lastMove: -1, moves: 0 };
+	}
+	var cubes = [newCube(), newCube()];
+	var lastMoveAny = 0;
+
+	// ---------------- rotina ----------------
+	var run = null;
+	var out = [];
+	function speak(text) { if (text) out.push({ type: 'speak', text: text }); }
+	function cue(kind, text) {
+		if (kind == 'bip') out.push({ type: 'cue' });
+		else if (kind == 'voz') speak(text);
+	}
+
+	var STEP_NAMES = { solve: 'Resolver', match: 'Igualar ao outro cubo', pattern: 'Padrão' };
+	function stepName(st) {
+		if (!st) return '';
+		if (st.type == 'pattern') return 'Padrão: ' + (st.patternName || '?');
+		return STEP_NAMES[st.type] || st.type;
+	}
+
+	function startStep(t) {
+		run.phase = 'wait';
+		run.phaseStart = t;
+		run.active = -1; run.plan = []; run.S = []; run.idx = 0; run.half = false;
+		run.batchEnd = 0; run.lastAct = t; run.repeats = 0; run.message = '';
+	}
+
+	function targetFor(st, k) {
+		if (st.type == 'solve') return new C.CC();
+		if (st.type == 'pattern') return C.fromFacelet(st.facelet) || new C.CC();
+		if (st.type == 'match') { var o = cubes[1 - k]; return o.state ? o.state.clone() : null; }
+		return new C.CC();
+	}
+
+	function buildPlan(t, budget) {
+		var st = run.steps[run.stepIndex];
+		var cur = cubes[run.active].state;
+		var target = targetFor(st, run.active);
+		if (!target) { run.message = 'Segundo cubo não conectado'; return false; }
+		run.target = target;
+		var p = plan(cur, target, budget);
+		if (!p) { run.message = 'Estado impossível (cubo descalibrado?)'; speak('erro'); return false; }
+		run.plan = p;
+		run.S = [cur];
+		for (var i = 0; i < p.length; i++) run.S.push(C.applyMove(run.S[i], p[i]));
+		run.idx = 0; run.half = false;
+		if (p.length == 0) { finishStep(t); return true; }
+		announce(t);
+		return true;
+	}
+
+	function announce(t) {
+		var n = Math.max(1, cfg.steps | 0);
+		run.batchEnd = Math.min(run.idx + n, run.plan.length);
+		speak(batchText());
+		run.lastAct = t; run.repeats = 0;
+	}
+	function batchText() {
+		var parts = [];
+		for (var i = run.idx; i < run.batchEnd; i++) parts.push(moveInfo(run.plan[i]).speech);
+		return parts.join(', ');
+	}
+
+	function finishStep(t) {
+		cue(cfg.doneCue, cfg.doneText);
+		run.stepIndex++;
+		if (run.stepIndex >= run.steps.length) {
+			if (cfg.loop) { run.stepIndex = 0; startStep(t); }
+			else { run.phase = 'fim'; run.active = -1; run.plan = []; }
+		} else startStep(t);
+	}
+
+	function onMove(k, t) {
+		if (!run) {
+			if (cfg.echoMoves && cubes[k].lastMove >= 0) speak(moveInfo(cubes[k].lastMove).speech);
+			return;
+		}
+		if (run.phase == 'wait' || run.phase == 'fim') return;   // mistura em andamento
+		var st = run.steps[run.stepIndex];
+		if (run.phase == 'armed') {
+			if (st.type == 'match' && !cubes[1 - k].state) {
+				run.message = 'Conecte o segundo cubo';
+				speak('falta o segundo cubo');
+				return;
+			}
+			run.active = k;
+			run.phase = 'guide';
+			buildPlan(t, cfg.optimizeMs);
+			return;
+		}
+		if (run.phase != 'guide') return;
+		if (k != run.active) {
+			// mexeram no cubo-alvo durante o "igualar": recalcula
+			if (st.type == 'match') buildPlan(t, 150);
+			return;
+		}
+		var cur = cubes[k].state;
+		if (C.equals(cur, run.target)) { finishStep(t); return; }
+		var j = -1;
+		for (var i = 0; i < run.S.length; i++) if (C.equals(cur, run.S[i])) { j = i; break; }
+		if (j > run.idx) {
+			run.idx = j; run.half = false; run.lastAct = t; run.repeats = 0;
+			if (run.idx >= run.batchEnd) announce(t);
+			return;
+		}
+		if (j == run.idx) { run.half = false; run.lastAct = t; return; }   // desfez o meio giro
+		if (j >= 0) { run.idx = j; run.half = false; announce(t); return; }  // voltou atrás
+		var m = run.plan[run.idx];
+		if (!run.half && m % 3 == 1) {
+			var f3 = m - 1;
+			var base = run.S[run.idx];
+			if (C.equals(cur, C.applyMove(base, f3)) || C.equals(cur, C.applyMove(base, f3 + 2))) {
+				run.half = true; run.lastAct = t; return;
+			}
+		}
+		// giro errado: recalcula a partir de onde está
+		buildPlan(t, 150);
+	}
+
+	function tick(t) {
+		if (!run) return;
+		if (run.phase == 'wait') {
+			var ref = Math.max(lastMoveAny, run.phaseStart);
+			if (t - ref >= cfg.waitAfterMix * 1000) {
+				run.phase = 'armed';
+				cue(cfg.readyCue, cfg.readyText);
+			}
+		} else if (run.phase == 'guide') {
+			if (cfg.repeatAfter > 0 && run.repeats < cfg.maxRepeats && t - run.lastAct >= cfg.repeatAfter * 1000) {
+				speak(batchText());
+				run.repeats++; run.lastAct = t;
+			}
+		}
+	}
+
+	// ---------------- API para o app ----------------
+	function take() { var o = out; out = []; return JSON.stringify(o); }
+
+	function feed(k, bytes, t) {
+		var p = C.giikerParse(bytes);
+		if (!p) return take();
+		var c = cubes[k];
+		c.connected = true;
+		c.raw = p.state;
+		var st = C.mult(c.calibInv, p.state);
+		var prev = c.state;
+		c.state = st;
+		if (prev && !C.equals(prev, st)) {
+			c.lastMove = C.findMove(prev, st);
+			c.lastMoveAt = t; c.moves++;
+			lastMoveAny = t;
+			onMove(k, t);
+		}
+		return take();
+	}
+
+	function cmd(name, arg, t) {
+		arg = arg || {};
+		switch (name) {
+			case 'start':
+				var steps = (arg.steps || []).filter(function (s) { return s && STEP_NAMES[s.type]; });
+				if (!steps.length) break;
+				run = { name: arg.name || 'Rotina', steps: steps, stepIndex: 0 };
+				startStep(t);
+				break;
+			case 'stop': run = null; break;
+			case 'tap':   // toque no óculos / fone: repete a instrução, ou pula a espera
+				if (!run) break;
+				if (run.phase == 'guide') { speak(batchText()); run.lastAct = t; }
+				else if (run.phase == 'wait') { run.phase = 'armed'; cue(cfg.readyCue, cfg.readyText); }
+				else if (run.phase == 'armed') cue(cfg.readyCue, cfg.readyText);
+				break;
+			case 'restartStep': if (run && run.phase != 'fim') startStep(t); break;
+			case 'nextStep':
+				if (run && run.phase != 'fim') { run.stepIndex++; if (run.stepIndex >= run.steps.length) run.phase = 'fim'; else startStep(t); }
+				break;
+			case 'calibrate':   // cubo está fisicamente resolvido agora
+				var c = cubes[arg.slot | 0];
+				if (c.raw) {
+					c.calibInv = C.inv(c.raw);
+					c.state = new C.CC();
+					out.push({ type: 'calibrated', slot: arg.slot | 0, raw: C.toFacelet(c.raw) });
+				}
+				break;
+			case 'setCalib':
+				var cc = cubes[arg.slot | 0];
+				var r = arg.raw ? C.fromFacelet(arg.raw) : null;
+				cc.calibInv = r ? C.inv(r) : new C.CC();
+				if (cc.raw) cc.state = C.mult(cc.calibInv, cc.raw);
+				break;
+			case 'capture':
+				var cp = cubes[arg.slot | 0];
+				if (cp.state) out.push({ type: 'captured', slot: arg.slot | 0, facelet: C.toFacelet(cp.state) });
+				break;
+			case 'connected':
+				var cn = cubes[arg.slot | 0];
+				cn.connected = !!arg.on;
+				if (!arg.on) { cn.state = null; cn.raw = null; }
+				break;
+			case 'say':
+				speak(arg.text);
+				break;
+			case 'testMove':
+				speak(moveInfo(arg.m | 0).speech);
+				break;
+		}
+		return take();
+	}
+
+	function config(json) {
+		var o = typeof json == 'string' ? JSON.parse(json) : json;
+		var n = clone(DEF);
+		for (var k in o) if (o[k] !== null && o[k] !== undefined && k in DEF) n[k] = o[k];
+		cfg = n;
+	}
+
+	function ui() {
+		var u = { cubes: [], run: null };
+		for (var i = 0; i < 2; i++) {
+			var c = cubes[i];
+			u.cubes.push({
+				connected: c.connected, hasState: !!c.state,
+				facelet: c.state ? C.toFacelet(c.state) : '',
+				solved: c.state ? C.isSolved(c.state) : false,
+				lastMove: c.lastMove >= 0 ? moveInfo(c.lastMove).label + '  (' + moveInfo(c.lastMove).notation + ')' : '',
+				moves: c.moves
+			});
+		}
+		if (run) {
+			var st = run.steps[run.stepIndex];
+			var next = [];
+			if (run.phase == 'guide') for (var j = run.idx; j < run.plan.length; j++) {
+				var mi = moveInfo(run.plan[j]);
+				next.push({ label: mi.label, notation: mi.notation, face: mi.face, power: mi.power, speech: mi.speech });
+			}
+			var labels = { wait: 'Aguardando a mistura terminar', armed: 'Pronto — gire o cubo que você pegar',
+				guide: 'Guiando', fim: 'Rotina concluída' };
+			u.run = {
+				name: run.name, phase: run.phase, phaseLabel: labels[run.phase] || run.phase,
+				stepIndex: run.stepIndex, stepCount: run.steps.length,
+				stepName: run.phase == 'fim' ? '' : stepName(st),
+				active: run.active, next: next, total: run.plan.length, done: run.idx,
+				half: !!run.half, message: run.message || '',
+				target: (run.phase == 'guide' && run.target) ? C.toFacelet(run.target) : ''
+			};
+		}
+		return JSON.stringify(u);
+	}
+
+	// padrões prontos (aplicados a partir do cubo resolvido)
+	var PATTERNS = [
+		['Xadrez', "U2 D2 F2 B2 L2 R2"],
+		['Superflip', "U R2 F B R B2 R U2 L B2 R U' D' R2 F R' L B2 U2 F2"],
+		['Cubo no cubo', "F L F U' R U F2 L2 U' L' B D' B' L2 U"],
+		['Seis pontos', "U D' R L' F B' U D'"],
+		['Faixas', "U2 R2 L2 U2 R2 L2"],
+		['Cruzes', "U F B' L2 U2 L2 F' B U2 L2 U"],
+		['Listras', "F2 B2 U2 D2"]
+	];
+	function patterns() {
+		return JSON.stringify(PATTERNS.map(function (p) {
+			return { name: p[0], alg: p[1], facelet: C.toFacelet(C.applyAlg(new C.CC(), C.parseAlg(p[1]))) };
+		}));
+	}
+
+	function moveLabels() {
+		var r = [];
+		for (var m = 0; m < 18; m++) r.push(moveInfo(m));
+		return JSON.stringify(r);
+	}
+
+	return {
+		config: config, feed: feed, tick: function (t) { tick(t); return take(); }, cmd: cmd, ui: ui,
+		initSolver: initSolver, patterns: patterns, moveLabels: moveLabels, _plan: plan, _cubes: cubes
+	};
+})();
+
+// Funções globais chamadas pelo Swift (JavaScriptCore)
+function E_config(json) { Engine.config(json); return '[]'; }
+function E_feed(slot, hex, t) {
+	var b = [];
+	for (var i = 0; i + 1 < hex.length; i += 2) b.push(parseInt(hex.substr(i, 2), 16));
+	return Engine.feed(slot, b, t);
+}
+function E_tick(t) { return Engine.tick(t); }
+function E_cmd(name, argJson, t) { return Engine.cmd(name, argJson ? JSON.parse(argJson) : {}, t); }
+function E_ui() { return Engine.ui(); }
+function E_init() { Engine.initSolver(); return 'ok'; }
+function E_patterns() { return Engine.patterns(); }
+function E_moves() { return Engine.moveLabels(); }
+
+if (typeof module !== 'undefined' && module.exports) module.exports = Engine;
