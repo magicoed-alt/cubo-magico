@@ -10,6 +10,8 @@ struct ShowView: View {
                 if m.config.modoDiscreto && m.rodando {
                     discreto
                 } else {
+                  VStack(spacing: 0) {
+                    if let r = m.ui.run { painelTopo(r) }
                     ScrollView {
                         VStack(spacing: 16) {
                             escolhaRotina
@@ -24,6 +26,7 @@ struct ShowView: View {
                         }
                         .padding()
                     }
+                  }
                 }
             }
             .navigationTitle("Cubo Mágico")
@@ -32,6 +35,51 @@ struct ShowView: View {
     }
 
     // MARK: - partes
+
+    private var ingles: Bool { m.config.language == "en" }
+
+    /// Instrução grande no topo: dá para ler o próximo giro olhando o celular dentro da mala
+    @ViewBuilder
+    private func painelTopo(_ r: UIRun) -> some View {
+        let texto = (r.display ?? "").uppercased()
+        let ultimo = r.last ?? false
+        VStack(spacing: 6) {
+            Text(texto.isEmpty ? " " : texto)
+                .font(.system(size: 46, weight: .heavy, design: .rounded))
+                .foregroundColor(corDoTopo(r.phase, ultimo))
+                .multilineTextAlignment(.center)
+                .lineLimit(3)
+                .minimumScaleFactor(0.35)
+                .frame(maxWidth: .infinity)
+            Text(subtitulo(r))
+                .font(.subheadline.bold())
+                .foregroundColor(.white.opacity(0.6))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity)
+        .background(Color.black)
+    }
+
+    private func subtitulo(_ r: UIRun) -> String {
+        switch r.phase {
+        case "guide":
+            let n = r.next.count
+            if ingles { return n == 1 ? "last move" : "\(n) moves left" }
+            return n == 1 ? "último giro" : "faltam \(n) giros"
+        default:
+            return r.phaseLabel
+        }
+    }
+
+    private func corDoTopo(_ fase: String, _ ultimo: Bool) -> Color {
+        switch fase {
+        case "guide": return ultimo ? ciano : .white
+        case "fim": return .green
+        case "wait": return .orange
+        default: return .yellow
+        }
+    }
 
     private var escolhaRotina: some View {
         Menu {
@@ -132,8 +180,10 @@ struct ShowView: View {
                             .font(.caption.bold()).foregroundColor(ativo ? ciano : .white)
                             .lineLimit(1)
                     }
-                    CuboPlano(facelet: c?.facelet ?? "", cores: m.config.faceColor, tamanho: 8,
-                              destaqueFace: ativo ? m.ui.run?.next.first?.face : nil)
+                    CuboIso(facelet: c?.facelet ?? "", cores: m.config.faceColor, largura: 130,
+                            topo: m.ui.topo, direita: m.ui.direita,
+                            destaqueFace: ativo ? m.ui.run?.next.first?.face : nil)
+                        .frame(maxWidth: .infinity)
                     Text(c?.lastMove ?? "").font(.caption2).foregroundColor(.white.opacity(0.5)).lineLimit(1)
                 }
                 .padding(10)
@@ -149,9 +199,13 @@ struct ShowView: View {
         VStack(spacing: 12) {
             Spacer()
             if let r = m.ui.run {
-                Text(r.phase == "guide" ? (r.next.first?.label ?? "") : r.phaseLabel)
-                    .font(.title2.bold()).foregroundColor(.white.opacity(0.25))
-                Text("\(r.next.count)").font(.caption).foregroundColor(.white.opacity(0.15))
+                Text((r.display ?? r.phaseLabel).uppercased())
+                    .font(.system(size: 40, weight: .heavy, design: .rounded))
+                    .foregroundColor(.white.opacity(0.55))
+                    .multilineTextAlignment(.center)
+                    .minimumScaleFactor(0.4)
+                    .padding(.horizontal)
+                Text(subtitulo(r)).font(.caption).foregroundColor(.white.opacity(0.3))
             }
             Spacer()
             Text("toque 2× para sair do modo discreto")

@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Testar o motor (solver e rotinas)
         run: |
-          cd testes && node t_cube.js && node t_engine.js && node t_cego.js && node t_jsc.js | tee ../testes.log
+          cd testes && node t_cube.js && node t_engine.js && node t_cego.js && node t_cego.js en && node t_jsc.js | tee ../testes.log
       - name: Compilar (sem assinatura)
         run: |
           xcodebuild -project CuboMagico.xcodeproj -target CuboMagico \

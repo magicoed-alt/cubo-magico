@@ -7,6 +7,21 @@ struct Passo: Codable, Identifiable, Hashable {
     var tipo: String            // "solve" | "match" | "pattern"
     var padraoNome: String = ""
     var facelet: String = ""
+    var announce: String = ""   // nome falado no começo da etapa (vazio = automático)
+
+    init(tipo: String, padraoNome: String = "", facelet: String = "", announce: String = "") {
+        self.tipo = tipo; self.padraoNome = padraoNome; self.facelet = facelet; self.announce = announce
+    }
+
+    // tolerante: rotinas salvas antes desta versão não têm "announce"
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? c.decode(UUID.self, forKey: .id)) ?? UUID()
+        tipo = (try? c.decode(String.self, forKey: .tipo)) ?? "solve"
+        padraoNome = (try? c.decode(String.self, forKey: .padraoNome)) ?? ""
+        facelet = (try? c.decode(String.self, forKey: .facelet)) ?? ""
+        announce = (try? c.decode(String.self, forKey: .announce)) ?? ""
+    }
 
     var titulo: String {
         switch tipo {
@@ -24,7 +39,7 @@ struct Passo: Codable, Identifiable, Hashable {
         }
     }
     var paraMotor: [String: Any] {
-        ["type": tipo, "patternName": padraoNome, "facelet": facelet]
+        ["type": tipo, "patternName": padraoNome, "facelet": facelet, "announce": announce]
     }
 }
 
@@ -56,7 +71,11 @@ func playlistsPadrao() -> [Playlist] {
 // MARK: - Ajustes (as chaves iguais às do engine.js são enviadas ao motor)
 
 struct Config: Codable, Equatable {
-    var versao = 2
+    var versao = 3
+    var language = "pt"          // "pt" | "en"
+    var invertLeft = false
+    var invertBottom = false
+    var invertBack = false
     var speechMode = "posicao"
     var orientMode = "auto"
     var faceNames = ["cima", "direita", "frente", "baixo", "esquerda", "trás"]
@@ -72,7 +91,7 @@ struct Config: Codable, Equatable {
     var waitAfterMix = 7
     var readyCue = "bip"
     var readyText = "pronto"
-    var doneCue = "bip"
+    var doneCue = "frase"
     var doneText = "ok"
     var optimizeMs = 800
     var echoMoves = false
@@ -90,6 +109,10 @@ struct Config: Codable, Equatable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let d = Config()
         versao = (try? c.decode(Int.self, forKey: .versao)) ?? 1
+        language = (try? c.decode(String.self, forKey: .language)) ?? d.language
+        invertLeft = (try? c.decode(Bool.self, forKey: .invertLeft)) ?? d.invertLeft
+        invertBottom = (try? c.decode(Bool.self, forKey: .invertBottom)) ?? d.invertBottom
+        invertBack = (try? c.decode(Bool.self, forKey: .invertBack)) ?? d.invertBack
         speechMode = (try? c.decode(String.self, forKey: .speechMode)) ?? d.speechMode
         orientMode = (try? c.decode(String.self, forKey: .orientMode)) ?? d.orientMode
         faceNames = (try? c.decode([String].self, forKey: .faceNames)) ?? d.faceNames
@@ -125,6 +148,28 @@ struct Config: Codable, Equatable {
             wordCCW = d.wordCCW
             waitAfterMix = d.waitAfterMix
             versao = 2
+        }
+        if versao < 3 {
+            // versão 3: ao terminar a etapa fala "o cubo está resolvido" / "the cube is solved"
+            if doneCue == "bip" { doneCue = d.doneCue }
+            versao = 3
+        }
+    }
+
+    /// Palavras faladas de cada idioma (o inglês segue o padrão do CubeSmith)
+    mutating func aplicarIdioma(_ l: String) {
+        language = l
+        if l == "en" {
+            faceNames = ["top", "right", "front", "bottom", "left", "back"]
+            wordCW = "forward"; wordHalf = "double"; wordCCW = "reverse"
+            readyText = "ready"; doneText = "done"
+            invertLeft = true; invertBottom = true; invertBack = true
+        } else {
+            let d = Config()
+            faceNames = d.faceNames
+            wordCW = d.wordCW; wordHalf = d.wordHalf; wordCCW = d.wordCCW
+            readyText = d.readyText; doneText = d.doneText
+            invertLeft = false; invertBottom = false; invertBack = false
         }
     }
 }
@@ -179,13 +224,19 @@ struct UIRun: Codable {
     var half: Bool
     var message: String
     var target: String
+    var display: String?   // instrução atual (o que aparece grande no topo)
+    var last: Bool?        // é o último giro da etapa
 }
 
 struct EstadoUI: Codable {
     var cubes: [UICubo]
     var run: UIRun?
+    var view: [Int]?       // [face de cima, face da direita] como o cubo está na mão
 
-    static let vazio = EstadoUI(cubes: [], run: nil)
+    static let vazio = EstadoUI(cubes: [], run: nil, view: nil)
+
+    var topo: Int { view?.first ?? 0 }
+    var direita: Int { (view?.count ?? 0) > 1 ? view![1] : 1 }
 }
 
 struct Captura: Identifiable {

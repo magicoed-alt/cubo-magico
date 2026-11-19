@@ -13,6 +13,7 @@ final class Voz: NSObject {
 
     var velocidade: Double = 1.1
     var volume: Double = 1.0
+    var idioma = "pt"
 
     /// toque no óculos / fone (play, pause)
     var aoTocar: (() -> Void)?
@@ -108,7 +109,7 @@ final class Voz: NSObject {
         if silencio?.isPlaying != true { silencio?.play() }
         if sintetizador.isSpeaking { sintetizador.stopSpeaking(at: .immediate) }
         let u = AVSpeechUtterance(string: texto)
-        u.voice = AVSpeechSynthesisVoice(language: "pt-BR")
+        u.voice = AVSpeechSynthesisVoice(language: idioma == "en" ? "en-US" : "pt-BR")
         let taxa = AVSpeechUtteranceDefaultSpeechRate * Float(velocidade)
         u.rate = min(AVSpeechUtteranceMaximumSpeechRate, max(AVSpeechUtteranceMinimumSpeechRate, taxa))
         u.volume = Float(volume)

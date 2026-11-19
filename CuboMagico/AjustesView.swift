@@ -6,6 +6,7 @@ struct AjustesView: View {
     var body: some View {
         NavigationStack {
             Form {
+                secaoIdioma
                 secaoVoz
                 secaoInicio
                 secaoSolucao
@@ -15,6 +16,26 @@ struct AjustesView: View {
                 secaoPadroes
             }
             .navigationTitle("Ajustes")
+        }
+    }
+
+    @ViewBuilder
+    private var secaoIdioma: some View {
+        Section {
+            Picker("Idioma da voz", selection: Binding(get: { m.config.language },
+                                                       set: { m.mudarIdioma($0) })) {
+                Text("Português").tag("pt")
+                Text("English (como no CubeSmith)").tag("en")
+            }
+            if m.config.speechMode == "posicao" {
+                Toggle("Inverter ESQUERDA (left)", isOn: $m.config.invertLeft)
+                Toggle("Inverter BAIXO (bottom)", isOn: $m.config.invertBottom)
+                Toggle("Inverter TRÁS (back)", isOn: $m.config.invertBack)
+            }
+        } header: {
+            Text("Idioma")
+        } footer: {
+            Text("English fala \"top forward\", \"right reverse\", \"front double\", \"now turn…\" no último giro e \"the cube is solved\" no fim, e já liga as 3 inversões como no seu CubeSmith. Inverter = a face fala o sentido como se você olhasse a face oposta: \"left forward\" gira no mesmo sentido que \"right forward\"; \"bottom forward\" no mesmo sentido que \"top forward\"; \"back forward\" no mesmo sentido que \"front forward\".")
         }
     }
 
@@ -71,7 +92,8 @@ struct AjustesView: View {
             Picker("Aviso de etapa concluída", selection: $m.config.doneCue) {
                 Text("Nenhum").tag("nada")
                 Text("Bip").tag("bip")
-                Text("Voz").tag("voz")
+                Text("Frase (\"the cube is solved\")").tag("frase")
+                Text("Voz (texto meu)").tag("voz")
             }
             if m.config.doneCue == "voz" { campo("Texto do concluído", $m.config.doneText) }
             Toggle("Ao terminar, recomeçar a rotina", isOn: $m.config.loop)
@@ -128,7 +150,7 @@ struct AjustesView: View {
         if m.config.speechMode == "posicao" {
             Section {
                 ForEach(0..<6, id: \.self) { i in
-                    campo(["Cima", "Direita", "Frente (virada para você)", "Baixo", "Esquerda", "Trás (virada para a plateia)"][i], $m.config.faceNames[i])
+                    campo(["Cima (top)", "Direita (right)", "Frente (front, virada para você)", "Baixo (bottom)", "Esquerda (left)", "Trás (back, virada para a plateia)"][i], $m.config.faceNames[i])
                 }
             } header: {
                 Text("Nomes das faces faladas")
@@ -167,7 +189,7 @@ struct AjustesView: View {
             }
             ForEach(m.padroesProprios) { p in
                 HStack {
-                    CuboPlano(facelet: p.facelet, cores: m.config.faceColor, tamanho: 6)
+                    CuboIso(facelet: p.facelet, cores: m.config.faceColor, largura: 44)
                     Text(p.nome)
                 }
             }

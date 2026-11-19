@@ -79,14 +79,24 @@ struct EditorRotina: View {
                 }
                 Section {
                     ForEach(Array((m.playlists[safe: i]?.passos ?? []).enumerated()), id: \.element.id) { n, passo in
-                        Label("\(n + 1). \(passo.titulo)", systemImage: passo.icone)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Label("\(n + 1). \(passo.titulo)", systemImage: passo.icone)
+                            TextField("Nome falado: \(nomeFaladoAuto(passo))", text: Binding(
+                                get: { m.playlists[safe: i]?.passos[safe: n]?.announce ?? "" },
+                                set: { v in
+                                    if i < m.playlists.count, n < m.playlists[i].passos.count { m.playlists[i].passos[n].announce = v }
+                                }))
+                                .font(.callout)
+                                .foregroundColor(ciano)
+                                .textInputAutocapitalization(.never)
+                        }
                     }
                     .onDelete { idx in if i < m.playlists.count { m.playlists[i].passos.remove(atOffsets: idx) } }
                     .onMove { de, para in if i < m.playlists.count { m.playlists[i].passos.move(fromOffsets: de, toOffset: para) } }
                 } header: {
                     Text("Etapas (na ordem)")
                 } footer: {
-                    Text("Arraste para mudar a ordem; deslize para apagar. \"Igualar\" precisa de 2 cubos conectados: o cubo que você girar primeiro fica igual ao outro.")
+                    Text("Arraste para mudar a ordem; deslize para apagar. \"Igualar\" precisa de 2 cubos conectados: o cubo que você girar primeiro fica igual ao outro. O nome falado é dito antes de cada etapa começar (ex.: \"prediction\"); vazio = automático.")
                 }
                 Section("Adicionar etapa") {
                     Button { adicionar(Passo(tipo: "solve")) } label: {
@@ -110,6 +120,15 @@ struct EditorRotina: View {
             .toolbar { EditButton() }
         } else {
             Text("Rotina apagada")
+        }
+    }
+
+    private func nomeFaladoAuto(_ p: Passo) -> String {
+        let en = m.config.language == "en"
+        switch p.tipo {
+        case "solve": return en ? "solve the cube" : "resolver o cubo"
+        case "match": return en ? "matching cubes" : "igualar os cubos"
+        default: return p.padraoNome
         }
     }
 

@@ -19,16 +19,35 @@ var Engine = (function () {
 		maxRepeats: 3,
 		waitAfterMix: 7,                // segundos sem giro para considerar a mistura terminada
 		readyCue: 'bip', readyText: 'pronto',  // 'nada' | 'bip' | 'voz'
-		doneCue: 'bip', doneText: 'ok',
+		doneCue: 'frase', doneText: 'ok',   // 'frase' = "the cube is solved" etc.
 		optimizeMs: 800,                // tempo para procurar a solução mais curta
 		echoMoves: false,               // fora de rotina: falar cada giro (teste de cores)
-		loop: false                     // ao terminar a playlist, recomeçar
+		loop: false,                    // ao terminar a playlist, recomeçar
+		language: 'pt',                 // 'pt' | 'en' (frases fixas, cores e notação faladas)
+		// como no CubeSmith: inverte o sentido falado das faces opostas, para girarem
+		// no mesmo sentido que a direita / cima / frente
+		invertLeft: false, invertBottom: false, invertBack: false
 	};
 	var cfg = clone(DEF);
 
 	var POS = ['cima', 'direita', 'frente', 'baixo', 'esquerda', 'trás'];
 	var LETTER = ['U', 'R', 'F', 'D', 'L', 'B'];
 	var LETTER_SPEECH = ['u', 'érre', 'éfe', 'dê', 'éle', 'bê'];
+	var TXT = {
+		pt: { now: 'agora gire ', correct: 'corrige, ', no: 'não, ', error: 'erro', second: 'falta o segundo cubo',
+			solved: 'o cubo está resolvido', matched: 'os cubos estão iguais', patternDone: 'padrão pronto',
+			solveName: 'resolver o cubo', matchName: 'igualar os cubos',
+			letters: LETTER_SPEECH, powers: ['', ' dois', ' linha'], patterns: {} },
+		en: { now: 'now turn ', correct: 'correction, ', no: 'no, ', error: 'error', second: 'the second cube is missing',
+			solved: 'the cube is solved', matched: 'the cubes match', patternDone: 'the pattern is ready',
+			solveName: 'solve the cube', matchName: 'matching cubes',
+			letters: ['U', 'R', 'F', 'D', 'L', 'B'], powers: ['', ' two', ' prime'],
+			colors: { branco: 'white', vermelho: 'red', verde: 'green', amarelo: 'yellow', laranja: 'orange', azul: 'blue' },
+			patterns: { 'Xadrez': 'checkerboard', 'Superflip': 'superflip', 'Cubo no cubo': 'cube in a cube',
+				'Seis pontos': 'six spots', 'Faixas': 'bands', 'Cruzes': 'crosses', 'Listras': 'stripes' } }
+	};
+	function T() { return TXT[cfg.language] || TXT.pt; }
+	function corFalada(c) { var t = T().colors; return (t && t[c]) || c; }
 	var VEC = [[0, 1, 0], [1, 0, 0], [0, 0, 1], [0, -1, 0], [-1, 0, 0], [0, 0, -1]];
 
 	function clone(o) { return JSON.parse(JSON.stringify(o)); }
@@ -58,14 +77,17 @@ var Engine = (function () {
 
 	function moveInfo(m) {
 		var face = ~~(m / 3), p = m % 3, ph = physMap()[face];
-		var w = [cfg.wordCW, cfg.wordHalf, cfg.wordCCW][p];
+		var pw = p;
+		if (cfg.speechMode == 'posicao' && p != 1 &&
+			((ph == 4 && cfg.invertLeft) || (ph == 3 && cfg.invertBottom) || (ph == 5 && cfg.invertBack))) pw = 2 - p;
+		var w = [cfg.wordCW, cfg.wordHalf, cfg.wordCCW][pw];
 		var color = cfg.faceColor[face] || C.FACES[face];
 		var notation = LETTER[ph] + ['', '2', "'"][p];
 		var speech;
 		var pos = (cfg.faceNames && cfg.faceNames[ph]) || POS[ph];
 		if (cfg.speechMode == 'posicao') speech = pos + ' ' + w;
-		else if (cfg.speechMode == 'notacao') speech = LETTER_SPEECH[ph] + ['', ' dois', ' linha'][p];
-		else speech = color + ' ' + w;
+		else if (cfg.speechMode == 'notacao') speech = T().letters[ph] + T().powers[p];
+		else speech = corFalada(color) + ' ' + w;
 		var nome = cfg.speechMode == 'cores' ? color : pos;
 		return { m: m, face: face, power: p, speech: speech, notation: notation, color: color,
 			label: nome.toUpperCase() + ' ' + ['↻', '2×', '↺'][p] };
@@ -114,11 +136,17 @@ var Engine = (function () {
 	}
 	var cubes = [newCube(), newCube()];
 	var lastMoveAny = 0;
+	var viewOrient = null;   // última orientação aprendida (para desenhar o cubo como ele está na mão)
 
 	// ---------------- rotina ----------------
 	var run = null;
 	var out = [];
-	function speak(text) { if (text) out.push({ type: 'speak', text: text }); }
+	function speak(text) {
+		if (!text) return;
+		var u = out.length ? out[out.length - 1] : null;
+		if (u && u.type == 'speak') u.text += '. ' + text;   // uma fala nova cortaria a anterior
+		else out.push({ type: 'speak', text: text });
+	}
 	function cue(kind, text) {
 		if (kind == 'bip') out.push({ type: 'cue' });
 		else if (kind == 'voz') speak(text);
@@ -139,13 +167,29 @@ var Engine = (function () {
 		if (st.type == 'pattern') return 'Padrão: ' + (st.patternName || '?');
 		return STEP_NAMES[st.type] || st.type;
 	}
+	// nome falado no começo da etapa ("solve the cube", "matching cubes", "prediction")
+	function stepAnnounce(st) {
+		if (!st) return '';
+		if (st.announce && String(st.announce).trim()) return String(st.announce).trim();
+		if (st.type == 'solve') return T().solveName;
+		if (st.type == 'match') return T().matchName;
+		var n = st.patternName || '';
+		return T().patterns[n] || n;
+	}
+	function stepDone(st) {
+		if (!st) return '';
+		if (st.type == 'solve') return T().solved;
+		if (st.type == 'match') return T().matched;
+		return T().patternDone;
+	}
 
 	function startStep(t) {
 		run.phase = 'wait';
 		run.phaseStart = t;
 		run.active = -1; run.plan = []; run.S = []; run.idx = 0; run.half = false;
 		run.batchEnd = 0; run.lastAct = t; run.repeats = 0; run.message = '';
-		run.orient = null; run.lastText = '';
+		run.orient = null; run.lastText = ''; run.halfRem = -1;
+		speak(stepAnnounce(run.steps[run.stepIndex]));
 	}
 
 	function targetFor(st, k) {
@@ -162,11 +206,11 @@ var Engine = (function () {
 		if (!target) { run.message = 'Segundo cubo não conectado'; return false; }
 		run.target = target;
 		var p = plan(cur, target, budget);
-		if (!p) { run.message = 'Estado impossível (cubo descalibrado?)'; speak('erro'); return false; }
+		if (!p) { run.message = 'Estado impossível (cubo descalibrado?)'; speak(T().error); return false; }
 		run.plan = p;
 		run.S = [cur];
 		for (var i = 0; i < p.length; i++) run.S.push(C.applyMove(run.S[i], p[i]));
-		run.idx = 0; run.half = false;
+		run.idx = 0; run.half = false; run.halfRem = -1;
 		if (p.length == 0) { finishStep(t); return true; }
 		announce(t, prefixo);
 		return true;
@@ -175,18 +219,28 @@ var Engine = (function () {
 	function announce(t, prefixo) {
 		var n = Math.max(1, cfg.steps | 0);
 		run.batchEnd = Math.min(run.idx + n, run.plan.length);
-		speak((prefixo || '') + batchText());
 		run.lastText = batchText();
+		speak((prefixo || '') + run.lastText);
 		run.lastAct = t; run.repeats = 0;
 	}
+	// texto do(s) próximo(s) giro(s); no último giro começa com "now turn" / "agora gire"
 	function batchText() {
 		var parts = [];
-		for (var i = run.idx; i < run.batchEnd; i++) parts.push(moveInfo(run.plan[i]).speech);
-		return parts.join(', ');
+		for (var i = run.idx; i < run.batchEnd; i++) {
+			// meio giro feito: falta só um quarto de volta, no sentido em que ele começou
+			var m = (i == run.idx && run.half && run.halfRem >= 0) ? run.halfRem : run.plan[i];
+			parts.push(moveInfo(m).speech);
+		}
+		var txt = parts.join(', ');
+		if (run.batchEnd >= run.plan.length && txt) txt = T().now + txt;
+		return txt;
 	}
 
 	function finishStep(t) {
-		cue(cfg.doneCue, cfg.doneText);
+		var st = run.steps[run.stepIndex];
+		if (cfg.doneCue == 'frase') speak(stepDone(st));
+		else cue(cfg.doneCue, cfg.doneText);
+		run.doneText = stepDone(st);
 		run.stepIndex++;
 		if (run.stepIndex >= run.steps.length) {
 			if (cfg.loop) { run.stepIndex = 0; startStep(t); }
@@ -204,7 +258,7 @@ var Engine = (function () {
 		if (run.phase == 'armed' || (run.phase == 'orient1' && k == run.active)) {
 			if (st.type == 'match' && !cubes[1 - k].state) {
 				run.message = 'Conecte o segundo cubo';
-				speak('falta o segundo cubo');
+				speak(T().second);
 				return;
 			}
 			run.active = k;
@@ -227,10 +281,11 @@ var Engine = (function () {
 				var f = cubes[k].lastMove >= 0 ? ~~(cubes[k].lastMove / 3) : -1;
 				if (f < 0 || eixo(f) == eixo(run.orient.top)) {
 					// girou cima ou baixo de novo: corrige
-					instrucao('não, ' + textoOrient2(), t);
+					instrucao(T().no + textoOrient2(), t);
 					return;
 				}
 				run.orient.right = f;
+				viewOrient = { top: run.orient.top, right: f };
 				run.phase = 'guide';
 				buildPlan(t, cfg.optimizeMs);
 			}
@@ -247,22 +302,27 @@ var Engine = (function () {
 		var j = -1;
 		for (var i = 0; i < run.S.length; i++) if (C.equals(cur, run.S[i])) { j = i; break; }
 		if (j > run.idx) {
-			run.idx = j; run.half = false; run.lastAct = t; run.repeats = 0;
+			run.idx = j; run.half = false; run.halfRem = -1; run.lastAct = t; run.repeats = 0;
 			if (run.idx >= run.batchEnd) announce(t);
+			else run.lastText = batchText();
 			return;
 		}
-		if (j == run.idx) { run.half = false; run.lastAct = t; return; }   // desfez o meio giro
-		if (j >= 0) { run.idx = j; run.half = false; announce(t); return; }  // voltou atrás
+		if (j == run.idx) { run.half = false; run.halfRem = -1; run.lastAct = t; run.lastText = batchText(); return; }   // desfez o meio giro
+		if (j >= 0) { run.idx = j; run.half = false; run.halfRem = -1; announce(t); return; }  // voltou atrás
 		var m = run.plan[run.idx];
-		if (!run.half && m % 3 == 1) {
+		if (m % 3 == 1) {
+			// giro duplo: um quarto de volta (em qualquer sentido) é meio caminho
 			var f3 = m - 1;
 			var base = run.S[run.idx];
-			if (C.equals(cur, C.applyMove(base, f3)) || C.equals(cur, C.applyMove(base, f3 + 2))) {
-				run.half = true; run.lastAct = t; return;
+			var rem = C.equals(cur, C.applyMove(base, f3)) ? f3 : (C.equals(cur, C.applyMove(base, f3 + 2)) ? f3 + 2 : -1);
+			if (rem >= 0) {
+				run.half = true; run.halfRem = rem; run.lastAct = t; run.repeats = 0;
+				run.lastText = batchText();
+				return;
 			}
 		}
 		// giro errado: recalcula a partir de onde está e avisa
-		buildPlan(t, 150, 'corrige, ');
+		buildPlan(t, 150, T().correct);
 	}
 
 	function armar(t) {
@@ -316,7 +376,8 @@ var Engine = (function () {
 			case 'start':
 				var steps = (arg.steps || []).filter(function (s) { return s && STEP_NAMES[s.type]; });
 				if (!steps.length) break;
-				run = { name: arg.name || 'Rotina', steps: steps, stepIndex: 0 };
+				run = { name: arg.name || 'Rotina', steps: steps, stepIndex: 0, doneText: '' };
+				viewOrient = null;
 				startStep(t);
 				break;
 			case 'stop': run = null; break;
@@ -377,8 +438,30 @@ var Engine = (function () {
 		cfg = n;
 	}
 
+	function viewFaces() {
+		if (viewOrient) return [viewOrient.top, viewOrient.right];
+		var tp = cfg.topFace | 0, f = cfg.frontFace | 0;
+		if (tp < 0 || tp > 5 || f < 0 || f > 5 || dot(VEC[tp], VEC[f]) != 0) { tp = 0; f = 2; }
+		var rt = cross(VEC[tp], VEC[f]);
+		for (var k = 0; k < 6; k++) if (dot(VEC[k], rt) == 1) return [tp, k];
+		return [0, 1];
+	}
+
+	function displayText() {
+		if (!run) return '';
+		var st = run.steps[run.stepIndex];
+		switch (run.phase) {
+			case 'wait': return stepAnnounce(st);
+			case 'armed': return run.lastText || stepAnnounce(st);
+			case 'orient1': case 'orient2': return run.lastText;
+			case 'guide': return batchText();
+			case 'fim': return run.doneText || '';
+		}
+		return '';
+	}
+
 	function ui() {
-		var u = { cubes: [], run: null };
+		var u = { cubes: [], run: null, view: viewFaces() };
 		for (var i = 0; i < 2; i++) {
 			var c = cubes[i];
 			u.cubes.push({
@@ -396,7 +479,10 @@ var Engine = (function () {
 				var mi = moveInfo(run.plan[j]);
 				next.push({ label: mi.label, notation: mi.notation, face: mi.face, power: mi.power, speech: mi.speech });
 			}
-			var labels = { wait: 'Aguardando a mistura terminar',
+			var labels = cfg.language == 'en' ? { wait: 'Waiting for the mix to end',
+				armed: usaOrientacaoAuto() ? 'Ready — turn the TOP face of the cube you pick' : 'Ready — turn the cube you pick',
+				orient1: 'Turn the TOP face', orient2: 'Turn the RIGHT face',
+				guide: 'Guiding', fim: 'Routine finished' } : { wait: 'Aguardando a mistura terminar',
 				armed: usaOrientacaoAuto() ? 'Pronto — gire a face de CIMA do cubo que você pegar' : 'Pronto — gire o cubo que você pegar',
 				orient1: 'Gire a face de CIMA', orient2: 'Gire a face da DIREITA',
 				guide: 'Guiando', fim: 'Rotina concluída' };
@@ -406,6 +492,7 @@ var Engine = (function () {
 				stepName: run.phase == 'fim' ? '' : stepName(st),
 				active: run.active, next: next, total: run.plan.length, done: run.idx,
 				half: !!run.half, message: run.message || '',
+				display: displayText(), last: run.phase == 'guide' && run.batchEnd >= run.plan.length,
 				target: (run.phase == 'guide' && run.target) ? C.toFacelet(run.target) : ''
 			};
 		}

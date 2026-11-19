@@ -46,7 +46,8 @@ struct CubosView: View {
         let c = m.ui.cubes[safe: i]
         Section {
             HStack(alignment: .top, spacing: 14) {
-                CuboPlano(facelet: c?.facelet ?? "", cores: m.config.faceColor, tamanho: 10)
+                CuboIso(facelet: c?.facelet ?? "", cores: m.config.faceColor, largura: 100,
+                        topo: m.ui.topo, direita: m.ui.direita)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(s.nome.isEmpty ? "—" : s.nome).font(.headline)
                     Text(s.estado.rawValue).font(.caption)

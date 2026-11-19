@@ -85,7 +85,14 @@ final class Modelo: ObservableObject {
     private func aplicarConfig() {
         Voz.shared.velocidade = config.velocidadeVoz
         Voz.shared.volume = config.volumeVoz
+        Voz.shared.idioma = config.language
         motor.configurar(config)
+    }
+
+    func mudarIdioma(_ l: String) {
+        var c = config
+        c.aplicarIdioma(l)
+        config = c
     }
 
     // MARK: - ações do motor

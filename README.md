@@ -25,6 +25,11 @@ Não vire o cubo na mão durante a solução. Se virar, use **Reorientar** (na t
 
 O toque na haste do óculos (play/pause) **repete** a instrução. Durante a espera, o mesmo toque **pula a espera**.
 
+Antes de cada etapa o app fala o nome dela ("solve the cube", "matching cubes" ou o nome falado que você escrever, ex.: "prediction"). No último giro a fala começa com **"now turn"** ("agora gire") e, no fim, ele diz **"the cube is solved"** ("o cubo está resolvido"). A instrução atual aparece grande no topo da tela do Show, para ler olhando o celular.
+
+## Idioma
+Em Ajustes → Idioma: **Português** ou **English** (padrão do CubeSmith: top/bottom/front/back/left/right, forward/reverse/double, com *Invert LEFT / BOTTOM / BACK* ligados). Inverter faz a face falar o sentido como se você olhasse a face oposta: "left forward" gira no mesmo sentido que "right forward".
+
 ## Instalar
 A cada envio para a branch `main`, o GitHub Actions faz três coisas:
 1. Testa o motor.
