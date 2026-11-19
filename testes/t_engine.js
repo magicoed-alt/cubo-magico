@@ -7,7 +7,7 @@ function turn(k, m){ phys[k] = Cube.applyMove(phys[k], m); T += 300; handle(E.fe
 function quarterTurns(m){ const f=~~(m/3)*3, p=m%3; if (p===0) return [f]; if (p===2) return [f+2]; return Math.random()<.5?[f,f]:[f+2,f+2]; }
 function wait(ms){ const end=T+ms; while (T<end){ T+=200; handle(E.tick(T)); } }
 function ui(){ return JSON.parse(E.ui()); }
-E.config({steps: 1, optimizeMs: 300});
+E.config({steps: 1, optimizeMs: 300, speechMode: 'cores', waitAfterMix: 5, wordCW: 'horário', wordHalf: 'duas', wordCCW: 'anti'});
 // conectar
 handle(E.feed(0, encode(phys[0], -1), T)); handle(E.feed(1, encode(phys[1], -1, true), T));
 let fails=0; const ok=(c,m)=>{ if(!c){fails++; console.log('FALHA',m);} };

@@ -11,12 +11,19 @@ Uma rotina é uma sequência de etapas, que podem ser combinadas na ordem que vo
 
 Exemplo: *Igualar → Resolver*.
 
-## Como cada etapa começa
-1. A etapa espera ninguém mexer nos cubos por **X segundos**. O padrão é 5 s; isso marca o fim da mistura.
-2. Depois disso, o **primeiro giro que você der** escolhe o cubo, e o app começa a falar.
-3. Se você errar um giro, ele recalcula na hora.
+## Como cada etapa começa (olhos fechados)
+1. A etapa espera ninguém mexer nos cubos por **7 s**, que marca o fim da mistura.
+2. O app fala **"cima frente"**: gire a face de cima do cubo que você pegou. Esse giro mostra ao app qual cubo é o seu e qual face está em cima.
+3. O app fala **"direita frente"**: gire a face da direita. Se você girar cima ou baixo de novo, ele corrige ("não, direita frente").
+4. A partir daí as instruções são por posição: cima, baixo, direita, esquerda, frente e trás.
+   - **frente** = sentido horário olhando para a face
+   - **reverso** = anti-horário
+   - **duplo** = 180°
+5. Se você errar um giro, ele fala "corrige, …" e recalcula.
 
-Um toque na haste do óculos (play/pause) **repete** a instrução. Durante a espera, o mesmo toque **pula a espera**.
+Não vire o cubo na mão durante a solução. Se virar, use **Reorientar** (na tela, ou o comando de próxima faixa do óculos): o app pede "cima frente" e "direita frente" de novo.
+
+O toque na haste do óculos (play/pause) **repete** a instrução. Durante a espera, o mesmo toque **pula a espera**.
 
 ## Instalar
 A cada envio para a branch `main`, o GitHub Actions faz três coisas:

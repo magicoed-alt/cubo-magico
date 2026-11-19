@@ -22,11 +22,17 @@ struct AjustesView: View {
     private var secaoVoz: some View {
         Section {
             Picker("Como falar", selection: $m.config.speechMode) {
-                Text("Cor da face — \"vermelho horário\"").tag("cores")
-                Text("Posição — \"direita horário\"").tag("posicao")
+                Text("Posição (olhos fechados) — \"direita frente\"").tag("posicao")
+                Text("Cor da face — \"vermelho frente\"").tag("cores")
                 Text("Notação — \"érre linha\"").tag("notacao")
             }
             .pickerStyle(.inline)
+            if m.config.speechMode != "cores" {
+                Picker("Orientação do cubo", selection: $m.config.orientMode) {
+                    Text("Automática (cima, depois direita)").tag("auto")
+                    Text("Fixa (cores escolhidas abaixo)").tag("fixa")
+                }
+            }
             VStack(alignment: .leading) {
                 Text("Velocidade da voz: \(Int(m.config.velocidadeVoz * 100))%")
                 Slider(value: $m.config.velocidadeVoz, in: 0.6...1.8, step: 0.05)
@@ -36,9 +42,9 @@ struct AjustesView: View {
                 Slider(value: $m.config.volumeVoz, in: 0.2...1.0, step: 0.05)
             }
             if m.config.speechMode != "notacao" {
-                campo("Sentido horário", $m.config.wordCW)
-                campo("Duas vezes (180°)", $m.config.wordHalf)
-                campo("Anti-horário", $m.config.wordCCW)
+                campo("Horário (forward)", $m.config.wordCW)
+                campo("Duas vezes (double)", $m.config.wordHalf)
+                campo("Anti-horário (reverse)", $m.config.wordCCW)
             }
             Stepper("Giros por fala: \(m.config.steps)", value: $m.config.steps, in: 1...4)
             Stepper(m.config.repeatAfter == 0 ? "Repetir a fala: nunca" : "Repetir a fala após \(m.config.repeatAfter) s parado",
@@ -48,7 +54,7 @@ struct AjustesView: View {
         } header: {
             Text("Guia por áudio")
         } footer: {
-            Text("A voz sai onde o iPhone estiver tocando áudio: no Ray-Ban Meta, conecte o óculos ao iPhone antes. Um toque na haste do óculos repete a instrução (ou pula a espera).")
+            Text("\"Frente\" = sentido horário olhando de frente para aquela face; \"reverso\" = anti-horário. Na orientação automática o app sempre começa com \"cima frente\" (gire a face de cima) e \"direita frente\" (gire a face da direita): assim ele descobre como o cubo está na sua mão. Não vire o cubo na mão depois disso. A voz sai no Ray-Ban Meta: um toque na haste repete a instrução (ou pula a espera); o comando de próxima faixa reorienta.")
         }
     }
 
@@ -119,7 +125,16 @@ struct AjustesView: View {
 
     @ViewBuilder
     private var secaoSegurar: some View {
-        if m.config.speechMode != "cores" {
+        if m.config.speechMode == "posicao" {
+            Section {
+                ForEach(0..<6, id: \.self) { i in
+                    campo(["Cima", "Direita", "Frente", "Baixo", "Esquerda", "Trás"][i], $m.config.faceNames[i])
+                }
+            } header: {
+                Text("Nomes das faces faladas")
+            }
+        }
+        if m.config.speechMode != "cores" && m.config.orientMode == "fixa" {
             Section {
                 Picker("Em cima", selection: $m.config.topFace) {
                     ForEach(0..<6, id: \.self) { f in Text(m.config.faceColor[f]).tag(f) }

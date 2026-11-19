@@ -56,17 +56,20 @@ func playlistsPadrao() -> [Playlist] {
 // MARK: - Ajustes (as chaves iguais às do engine.js são enviadas ao motor)
 
 struct Config: Codable, Equatable {
-    var speechMode = "cores"
+    var versao = 2
+    var speechMode = "posicao"
+    var orientMode = "auto"
+    var faceNames = ["cima", "direita", "frente", "baixo", "esquerda", "trás"]
     var faceColor = ["branco", "vermelho", "verde", "amarelo", "laranja", "azul"]
     var topFace = 0
     var frontFace = 2
-    var wordCW = "horário"
-    var wordHalf = "duas"
-    var wordCCW = "anti"
+    var wordCW = "frente"
+    var wordHalf = "duplo"
+    var wordCCW = "reverso"
     var steps = 1
     var repeatAfter = 3
     var maxRepeats = 3
-    var waitAfterMix = 5
+    var waitAfterMix = 7
     var readyCue = "bip"
     var readyText = "pronto"
     var doneCue = "bip"
@@ -86,7 +89,11 @@ struct Config: Codable, Equatable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let d = Config()
+        versao = (try? c.decode(Int.self, forKey: .versao)) ?? 1
         speechMode = (try? c.decode(String.self, forKey: .speechMode)) ?? d.speechMode
+        orientMode = (try? c.decode(String.self, forKey: .orientMode)) ?? d.orientMode
+        faceNames = (try? c.decode([String].self, forKey: .faceNames)) ?? d.faceNames
+        if faceNames.count != 6 { faceNames = d.faceNames }
         faceColor = (try? c.decode([String].self, forKey: .faceColor)) ?? d.faceColor
         if faceColor.count != 6 { faceColor = d.faceColor }
         topFace = (try? c.decode(Int.self, forKey: .topFace)) ?? d.topFace
@@ -109,6 +116,16 @@ struct Config: Codable, Equatable {
         volumeVoz = (try? c.decode(Double.self, forKey: .volumeVoz)) ?? d.volumeVoz
         modoDiscreto = (try? c.decode(Bool.self, forKey: .modoDiscreto)) ?? d.modoDiscreto
         mostrarCubo = (try? c.decode(Bool.self, forKey: .mostrarCubo)) ?? d.mostrarCubo
+        if versao < 2 {
+            // versão 2: mágica de olhos fechados (posição + orientação automática, espera de 7 s)
+            speechMode = d.speechMode
+            orientMode = d.orientMode
+            wordCW = d.wordCW
+            wordHalf = d.wordHalf
+            wordCCW = d.wordCCW
+            waitAfterMix = d.waitAfterMix
+            versao = 2
+        }
     }
 }
 

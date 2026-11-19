@@ -57,8 +57,8 @@ final class Modelo: ObservableObject {
 
         let voz = Voz.shared
         voz.aoTocar = { [weak self] in self?.motor.comando("tap") }
-        voz.aoProxima = { [weak self] in self?.motor.comando("restartStep") }
-        voz.aoAnterior = { [weak self] in self?.motor.comando("restartStep") }
+        voz.aoProxima = { [weak self] in self?.motor.comando("reorient") }
+        voz.aoAnterior = { [weak self] in self?.motor.comando("reorient") }
         voz.ligar()
 
         aplicarConfig()
@@ -130,6 +130,7 @@ final class Modelo: ObservableObject {
     func parar() { motor.comando("stop") }
     func tocar() { motor.comando("tap") }
     func reiniciarEtapa() { motor.comando("restartStep") }
+    func reorientar() { motor.comando("reorient") }
     func proximaEtapa() { motor.comando("nextStep") }
     func calibrar(_ slot: Int) { motor.comando("calibrate", ["slot": slot]) }
     func capturar(_ slot: Int) { motor.comando("capture", ["slot": slot]) }

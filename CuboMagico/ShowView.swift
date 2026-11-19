@@ -110,6 +110,7 @@ struct ShowView: View {
             }
             HStack(spacing: 10) {
                 botaoPequeno(r.phase == "wait" ? "Pular espera" : "Repetir", "speaker.wave.2") { m.tocar() }
+                botaoPequeno("Reorientar", "arrow.up.and.down.and.arrow.left.and.right") { m.reorientar() }
                 botaoPequeno("Reiniciar etapa", "arrow.counterclockwise") { m.reiniciarEtapa() }
                 botaoPequeno("Próxima", "forward.end") { m.proximaEtapa() }
             }
@@ -181,6 +182,7 @@ struct ShowView: View {
         case "wait": return .orange
         case "armed": return .green
         case "guide": return ciano
+        case "orient1", "orient2": return .yellow
         default: return .white
         }
     }
