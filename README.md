@@ -15,10 +15,10 @@ Exemplo: *Igualar → Resolver*.
 1. A etapa espera ninguém mexer nos cubos por **7 s**, que marca o fim da mistura.
 2. O app fala **"cima frente"**: gire a face de cima do cubo que você pegou. Esse giro mostra ao app qual cubo é o seu e qual face está em cima.
 3. O app fala **"direita frente"**: gire a face da direita. Se você girar cima ou baixo de novo, ele corrige ("não, direita frente").
-4. A partir daí as instruções são por posição: cima, baixo, direita, esquerda, frente e trás.
+4. A partir daí as instruções são por posição: cima, baixo, direita, esquerda, **frente** (face virada para você) e **trás** (face virada para a plateia).
    - **frente** = sentido horário olhando para a face
    - **reverso** = anti-horário
-   - **duplo** = 180°
+   - **duplo** = duas vezes (180°)
 5. Se você errar um giro, ele fala "corrige, …" e recalcula.
 
 Não vire o cubo na mão durante a solução. Se virar, use **Reorientar** (na tela, ou o comando de próxima faixa do óculos): o app pede "cima frente" e "direita frente" de novo.

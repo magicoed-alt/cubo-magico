@@ -128,7 +128,7 @@ struct AjustesView: View {
         if m.config.speechMode == "posicao" {
             Section {
                 ForEach(0..<6, id: \.self) { i in
-                    campo(["Cima", "Direita", "Frente", "Baixo", "Esquerda", "Trás"][i], $m.config.faceNames[i])
+                    campo(["Cima", "Direita", "Frente (virada para você)", "Baixo", "Esquerda", "Trás (virada para a plateia)"][i], $m.config.faceNames[i])
                 }
             } header: {
                 Text("Nomes das faces faladas")
